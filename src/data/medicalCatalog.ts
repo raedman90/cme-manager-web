@@ -6,6 +6,7 @@ export type MedicalCatalogItem = {
 };
 
 export const MEDICAL_CATALOG: MedicalCatalogItem[] = [
+  { name: "Teste4", synonyms: ["teste4"], description: "teste4 teste4" },
   { name: "Teste3", synonyms: ["teste3"], description: "teste3 teste3" },
   { name: "Teste2", synonyms: ["teste2"], description: "teste2 teste2" },
   { name: "Teste1", synonyms: ["teste1"], description: "teste1 teste1" },

@@ -15,7 +15,7 @@ import {
   attachStorageMeta,
   attachWashMeta,
   type Stage,
-  getStageMeta,
+  getStageEventMeta,
   type StageKind,
 } from "@/api/stageMeta";
 
@@ -49,9 +49,8 @@ const disinfectionSchema = z
   .object({
     agent: z.enum(["PERACETICO", "HIPOCLORITO", "OPA", "QUATERNARIO", "ALCOOL70", "OUTRO"]),
     concentration: z.string().optional(),
-    contactMin: z.preprocess(
-      (v) => toNum(v as any),
-      z.number().positive("Contato (min) obrigatório")
+    contactMin: z.preprocess((v) => toNum(v as any),
+      z.number().int("Use minutos inteiros").positive("Contato (min) obrigatório")
     ),
     solutionLotId: z.string().optional(),
     testStripLot: z.string().optional(),
@@ -62,8 +61,12 @@ const disinfectionSchema = z
       .optional(),
     activationLevel: z.enum(["ATIVO_2","ATIVO_1","INATIVO","NAO_REALIZADO"]).optional(),
     testStripExpiry: z.string().optional(), // "YYYY-MM-DD"
-    measuredTempC: z.preprocess((v) => toNum(v as any), z.number().optional()),
-    ph: z.preprocess((v) => toNum(v as any), z.number().optional()),
+    measuredTempC: z.preprocess((v) => toNum(v as any),
+      z.number().min(0, "Temp. mínima 0°C").max(150, "Temp. máxima 150°C").optional()
+    ),
+    ph: z.preprocess((v) => toNum(v as any),
+      z.number().min(0, "pH mínimo 0").max(14, "pH máximo 14").optional()
+    ),
     notes: z.string().optional(),
   })
   .superRefine((val, ctx) => {
@@ -80,6 +83,18 @@ const disinfectionSchema = z
         message: "Selecione a classificação do resultado (legenda).",
         path: ["activationLevel"],
       });
+    }
+    // Fita com validade: se lote informado, validade deve existir e não estar expirada
+    if (val.testStripLot) {
+      if (!val.testStripExpiry) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Informe a validade da fita.", path: ["testStripExpiry"] });
+      } else {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const exp = new Date(val.testStripExpiry);
+        if (!isNaN(exp.getTime()) && exp < today) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Fita vencida.", path: ["testStripExpiry"] });
+        }
+      }
     }
   });
 
@@ -161,7 +176,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
       if (!open || !isMetaStage || !kind) return;
       setLoadingPrefill(true);
       try {
-        const res = await getStageMeta(cycleId, kind);
+        const res = await getStageEventMeta(cycleId, kind);
         const d = res?.detail;
         if (!d) {
           form.reset({});
@@ -942,13 +957,31 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
       }}
     >
       <DialogContent className="sm:max-w-[720px] max-h-[85vh] overflow-y-auto">
-        <DialogTitle>
-          Metadados — {stage}
-          {loadingPrefill && <span className="ml-2 text-xs text-muted-foreground">carregando…</span>}
-          {hasExisting && !loadingPrefill && (
-            <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs">já preenchido</span>
-          )}
-        </DialogTitle>
+        <DialogTitle className="flex flex-wrap items-center gap-2">
+            <span>Metadados — {stage}</span>
+            {loadingPrefill && <span className="text-xs text-muted-foreground">carregando…</span>}
+            {hasExisting && !loadingPrefill && (
+              <span className="rounded bg-muted px-2 py-0.5 text-xs">já preenchido</span>
+            )}
+            {/* Resumo (apenas DESINFECCAO) */}
+            {stage === "DESINFECCAO" && form.getValues()?.agent && (
+              <span className="ml-auto flex gap-2">
+                <span className="rounded px-2 py-0.5 text-xs border">
+                  Agente: {form.getValues().agent}
+                </span>
+                {form.getValues().testStripResult && (
+                  <span className="rounded px-2 py-0.5 text-xs border">
+                    Fita: {form.getValues().testStripResult}
+                  </span>
+                )}
+                {form.getValues().activationLevel && (
+                  <span className="rounded px-2 py-0.5 text-xs border">
+                    Class.: {form.getValues().activationLevel}
+                  </span>
+                )}
+              </span>
+            )}
+          </DialogTitle>
 
         <Form {...form}>
           <form className="space-y-4" onSubmit={form.handleSubmit(submit)}>
@@ -958,9 +991,20 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                 Cancelar
               </Button>
              {isMetaStage && !loadingPrefill && (
-                locked
-                  ? <Button type="button" onClick={() => setLocked(false)}>Editar</Button>
-                  : <Button type="submit">Salvar metadados</Button>
+                locked ? (
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (confirm("Editar metadados desta etapa?")) setLocked(false);
+                    }}
+                  >
+                    Editar
+                  </Button>
+                ) : (
+                  <Button type="submit" disabled={!form.formState.isDirty}>
+                    Salvar metadados
+                  </Button>
+                )
               )}
             </DialogFooter>
           </form>

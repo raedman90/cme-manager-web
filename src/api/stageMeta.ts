@@ -135,8 +135,8 @@ export async function attachStorageMeta(cycleId: string, meta: StorageMeta, note
 }
 
 /* ------------------------ GET p/ prefill por CICLO ------------------------ */
-export async function getStageMeta(cycleId: string, kind: StageKind) {
-  const { data } = await api.get(`/stage-events/${cycleId}/stage-meta/${kind}`);
+export async function getStageEventMeta(stageEventId: string, kind: StageKind) {
+  const { data } = await api.get(`/stage-events/${stageEventId}/stage-meta/${kind}`);
   return data as {
     ok: boolean;
     cycleId: string;
