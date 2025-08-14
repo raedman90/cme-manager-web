@@ -1,3 +1,4 @@
+// src/components/cycles/columns.ts
 import type { ColumnDef } from "@tanstack/react-table";
 import type { Cycle } from "@/types/cycle";
 import { Button } from "@/components/ui/button";
@@ -9,12 +10,10 @@ function fmt(dt?: string | null) {
   return d.toLocaleString("pt-BR", { timeZone: "America/Fortaleza" });
 }
 
-const STAGES = ["RECEBIMENTO","LAVAGEM","DESINFECCAO","ESTERILIZACAO","ARMAZENAMENTO"] as const;
-
 export type RowAction = {
   onEdit: (row: Cycle) => void;
   onDelete: (row: Cycle) => void;
-  onChangeStage: (row: Cycle, etapa: string) => void; // abre o modal avançado
+  onOpenMeta: (row: Cycle) => void;      // << novo
 };
 
 export function getCycleColumns(actions: RowAction): ColumnDef<Cycle>[] {
@@ -23,17 +22,7 @@ export function getCycleColumns(actions: RowAction): ColumnDef<Cycle>[] {
       accessorKey: "etapa",
       header: "Etapa",
       enableSorting: true,
-      cell: ({ row }) => (
-        <select
-          className="rounded-md border bg-background px-2 py-1 text-xs"
-          value={String(row.original.etapa || "RECEBIMENTO")}
-          onChange={(e) => actions.onChangeStage(row.original, e.target.value)}
-        >
-          {STAGES.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      ),
+      cell: ({ row }) => <span className="text-sm font-medium">{row.original.etapa}</span>,
     },
     {
       accessorKey: "responsavel",
@@ -68,8 +57,21 @@ export function getCycleColumns(actions: RowAction): ColumnDef<Cycle>[] {
       enableSorting: false,
       cell: ({ row }) => (
         <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => actions.onEdit(row.original)}>Editar</Button>
-          <Button variant="destructive" size="sm" onClick={() => actions.onDelete(row.original)}>Remover</Button>
+         <Button
+            variant="outline"
+            size="sm"
+            onClick={() => actions.onOpenMeta(row.original)}
+            disabled={row.original.etapa === "RECEBIMENTO"}
+            title={row.original.etapa === "RECEBIMENTO" ? "Sem metadados na etapa RECEBIMENTO" : undefined}
+          >
+            Metadados
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => actions.onEdit(row.original)}>
+            Editar
+          </Button>
+          <Button variant="destructive" size="sm" onClick={() => actions.onDelete(row.original)}>
+            Remover
+          </Button>
         </div>
       ),
     },

@@ -16,6 +16,8 @@ import type { ListCyclesParams } from "@/types/cycle";
 import TableSkeleton from "@/components/common/TableSkeleton";
 import { downloadCSV, toCSV } from "@/utils/csv";
 import ImportCyclesCSVDialog from "@/components/cycles/ImportCyclesCSVDialog";
+import StageMetaDialog from "@/components/cycles/StageMetaDialog";
+import type { Stage } from "@/api/stageMeta";
 import type { CsvHeader } from "@/utils/csv";
 
 /** Etapas (apenas p/ filtro/render) */
@@ -69,6 +71,10 @@ export default function Cycles() {
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Cycle | null>(null);
+
+  const [metaOpen, setMetaOpen] = useState(false);
+  const [metaStage, setMetaStage] = useState<Stage>("RECEBIMENTO");
+  const [metaCycleId, setMetaCycleId] = useState<string | null>(null);
 
   // criar
   const createMut = useMutation({
@@ -220,18 +226,21 @@ export default function Cycles() {
     () =>
       getCycleColumns({
         onEdit: openEdit,
-        onDelete: (row) => {
-          if (confirm("Cancelar este ciclo?")) deleteMut.mutate(row.id);
-        },
-        onChangeStage: () => {
-          toast({
-            title: "Avanço de etapa desativado aqui",
-            description: "Use o botão Editar para mudar a etapa (com os metadados exigidos).",
-          });
+        onDelete: (row) => { if (confirm("Cancelar este ciclo?")) deleteMut.mutate(row.id); },
+        onOpenMeta: (row) => {
+          if (row.etapa === "RECEBIMENTO") {
+            toast({
+              title: "Etapa sem metadados",
+              description: "A etapa RECEBIMENTO não possui metadados para anexar.",
+            });
+            return;
+          }
+          setMetaCycleId(row.id);
+          setMetaStage(row.etapa as Stage);
+          setMetaOpen(true);
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [deleteMut, toast]
+    [deleteMut]
   );
 
   const total = data?.total ?? (data?.data?.length ?? 0);
@@ -349,6 +358,15 @@ export default function Cycles() {
           />
         </DialogContent>
       </Dialog>
+      {metaCycleId && (
+        <StageMetaDialog
+          open={metaOpen}
+          onOpenChange={(v) => { setMetaOpen(v); if (!v) setMetaCycleId(null); }}
+          cycleId={metaCycleId}
+          stage={metaStage}
+          onSaved={() => qc.invalidateQueries({ queryKey: ["cycles"] })}
+        />
+      )}
 
       {/* Import CSV */}
       <ImportCyclesCSVDialog
