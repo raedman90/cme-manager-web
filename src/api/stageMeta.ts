@@ -9,6 +9,8 @@ export type Stage =
   | "ESTERILIZACAO"
   | "ARMAZENAMENTO";
 
+export type StageKind = "wash" | "disinfection" | "sterilization" | "storage";
+
 /* Payloads por etapa */
 export type WashMeta = {
   method: "MANUAL" | "ULTRASSONICA" | "TERMO_DESINFECCAO";
@@ -26,7 +28,7 @@ export type DisinfectionMeta = {
   testStripResult?: "PASS" | "FAIL" | "NA"; // inclui NA como no serviço
   activationTime?: string;  // "HH:mm"
   activationLevel?: "ATIVO_2" | "ATIVO_1" | "INATIVO" | "NAO_REALIZADO";
-  testStripExpiry?: string; // ISO date "YYYY-MM-DD"
+  testStripExpiry?: string; // "YYYY-MM-DD"
   measuredTempC?: number;
   ph?: number;
 };
@@ -66,7 +68,7 @@ const clean = <T extends Record<string, any>>(obj: T) => {
 
 /* -------------------- por CICLO (URLs planas) -------------------- */
 /** LAVAGEM */
-export async function attachWashMeta(cycleId: string, meta: WashMeta, notes?: string) {
+export async function attachWashMeta(cycleId: string, meta: WashMeta, notes?: string, opts?: { force?: boolean }) {
   const payload = clean({
     method: meta.method,
     detergent: meta.detergent,
@@ -74,12 +76,13 @@ export async function attachWashMeta(cycleId: string, meta: WashMeta, notes?: st
     tempC: toNum(meta.tempC),
     ...(notes ? { notes } : {}),
   });
-  const { data } = await api.post(`/cycles/${cycleId}/stage-meta/wash`, payload);
+  const qs = opts?.force ? "?force=1" : "";
+  const { data } = await api.post(`/cycles/${cycleId}/stage-meta/wash${qs}`, payload);
   return data;
 }
 
 /** DESINFECÇÃO */
-export async function attachDisinfectionMeta(cycleId: string, meta: DisinfectionMeta, notes?: string) {
+export async function attachDisinfectionMeta(cycleId: string, meta: DisinfectionMeta, notes?: string, opts?: { force?: boolean }) {
   const payload = clean({
     agent: meta.agent,                              // << plano (sem wrapper)
     concentration: meta.concentration,
@@ -94,12 +97,13 @@ export async function attachDisinfectionMeta(cycleId: string, meta: Disinfection
     ph: toNum(meta.ph),
     ...(notes ? { notes } : {}),
   });
-  const { data } = await api.post(`/cycles/${cycleId}/stage-meta/disinfection`, payload);
+  const qs = opts?.force ? "?force=1" : "";
+  const { data } = await api.post(`/cycles/${cycleId}/stage-meta/disinfection${qs}`, payload);
   return data;
 }
 
 /** ESTERILIZAÇÃO */
-export async function attachSterilizationMeta(cycleId: string, meta: SterilizationMeta, notes?: string) {
+export async function attachSterilizationMeta(cycleId: string, meta: SterilizationMeta, notes?: string, opts?: { force?: boolean }) {
   const payload = clean({
     method: meta.method,
     autoclaveId: meta.autoclaveId,
@@ -111,12 +115,13 @@ export async function attachSterilizationMeta(cycleId: string, meta: Sterilizati
     loadId: meta.loadId,
     ...(notes ? { notes } : {}),
   });
-  const { data } = await api.post(`/cycles/${cycleId}/stage-meta/sterilization`, payload);
+  const qs = opts?.force ? "?force=1" : "";
+  const { data } = await api.post(`/cycles/${cycleId}/stage-meta/sterilization${qs}`, payload);
   return data;
 }
 
 /** ARMAZENAMENTO */
-export async function attachStorageMeta(cycleId: string, meta: StorageMeta, notes?: string) {
+export async function attachStorageMeta(cycleId: string, meta: StorageMeta, notes?: string, opts?: { force?: boolean }) {
   const payload = clean({
     location: meta.location,
     shelfPolicy: meta.shelfPolicy,
@@ -124,6 +129,20 @@ export async function attachStorageMeta(cycleId: string, meta: StorageMeta, note
     integrityOk: meta.integrityOk,
     ...(notes ? { notes } : {}),
   });
-  const { data } = await api.post(`/cycles/${cycleId}/stage-meta/storage`, payload);
+  const qs = opts?.force ? "?force=1" : "";
+  const { data } = await api.post(`/cycles/${cycleId}/stage-meta/storage${qs}`, payload);
   return data;
+}
+
+/* ------------------------ GET p/ prefill por CICLO ------------------------ */
+export async function getStageMeta(cycleId: string, kind: StageKind) {
+  const { data } = await api.get(`/stage-events/${cycleId}/stage-meta/${kind}`);
+  return data as {
+    ok: boolean;
+    cycleId: string;
+    stageEventId: string;
+    stage: Stage;
+    detail?: any; // registro específico da etapa (ex.: DisinfectionEvent)
+    meta?: any;   // StageEvent.meta (se o back devolver)
+  };
 }

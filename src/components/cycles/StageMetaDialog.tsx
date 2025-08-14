@@ -15,6 +15,8 @@ import {
   attachStorageMeta,
   attachWashMeta,
   type Stage,
+  getStageMeta,
+  type StageKind,
 } from "@/api/stageMeta";
 
 /* -------------------------- helpers -------------------------- */
@@ -118,6 +120,9 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
   const { toast } = useToast();
   const META_STAGES: Stage[] = ["LAVAGEM", "DESINFECCAO", "ESTERILIZACAO", "ARMAZENAMENTO"];
   const isMetaStage = React.useMemo(() => META_STAGES.includes(stage), [stage]);
+  const [locked, setLocked] = React.useState(false);
+  const [loadingPrefill, setLoadingPrefill] = React.useState(false);
+  const [hasExisting, setHasExisting] = React.useState(false);
 
   // escolhe schema conforme etapa
   const schema = React.useMemo(() => {
@@ -141,6 +146,86 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
     defaultValues: {},
     mode: "onSubmit",
   });
+  // Map stage -> kind
+  const kind = React.useMemo<StageKind | null>(() => {
+    if (stage === "LAVAGEM") return "wash";
+    if (stage === "DESINFECCAO") return "disinfection";
+    if (stage === "ESTERILIZACAO") return "sterilization";
+    if (stage === "ARMAZENAMENTO") return "storage";
+    return null;
+  }, [stage]);
+
+  // Prefill ao abrir
+  React.useEffect(() => {
+    (async () => {
+      if (!open || !isMetaStage || !kind) return;
+      setLoadingPrefill(true);
+      try {
+        const res = await getStageMeta(cycleId, kind);
+        const d = res?.detail;
+        if (!d) {
+          form.reset({});
+          setLocked(false);
+          setHasExisting(false);
+          return;
+        }
+        // Normaliza por etapa
+        if (stage === "DESINFECCAO") {
+          form.reset({
+            agent: d.agent ?? "",
+            concentration: d.concentration ?? "",
+            contactMin: d.contactMin ?? "",
+            solutionLotId: d.solutionLotId ?? "",
+            testStripLot: d.testStripLot ?? "",
+            testStripResult: d.testStripResult ?? "",
+            activationTime: d.activationTime ?? "",
+            activationLevel: d.activationLevel ?? "",
+            testStripExpiry: d.testStripExpiry ? String(d.testStripExpiry).slice(0,10) : "",
+            measuredTempC: d.measuredTempC ?? "",
+            ph: d.ph ?? "",
+            notes: res?.meta?.disinfection?.notes ?? "",
+          });
+        } else if (stage === "LAVAGEM") {
+          form.reset({
+            method: d.method ?? "",
+            detergent: d.detergent ?? "",
+            timeMin: d.timeMin ?? "",
+            tempC: d.tempC ?? "",
+          });
+        } else if (stage === "ESTERILIZACAO") {
+          form.reset({
+            method: d.method ?? "",
+            autoclaveId: d.autoclaveId ?? "",
+            program: d.program ?? "",
+            exposureMin: d.exposureMin ?? "",
+            tempC: d.tempC ?? "",
+            ci: d.ci ?? "",
+            bi: d.bi ?? "",
+            loadId: d.loadId ?? "",
+            notes: res?.meta?.sterilization?.notes ?? "",
+          });
+        } else if (stage === "ARMAZENAMENTO") {
+          form.reset({
+            location: d.location ?? "",
+            shelfPolicy: d.shelfPolicy ?? "",
+            expiresAtLocal: d.expiresAt ? String(d.expiresAt).slice(0,16) : "",
+            integrityOk: d.integrityOk ?? false,
+            notes: res?.meta?.storage?.notes ?? "",
+          });
+        }
+        setLocked(true);
+        setHasExisting(true);
+      } catch (err: any) {
+        // 404 => sem StageEvent/meta para essa etapa
+        form.reset({});
+        setLocked(false);
+        setHasExisting(false);
+      } finally {
+        setLoadingPrefill(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, cycleId, stage, kind]);
 
   async function submit(values: any) {
     try {
@@ -151,21 +236,26 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
         });
         return;
       }
+      // Se já existe e está travado, nada a fazer
+      if (locked) return;
+      const force = hasExisting; // se já existe (envia ?force=1)
+
       if (stage === "LAVAGEM") {
         const { notes, ...meta } = values;
-        await attachWashMeta(cycleId, meta, notes);
+        await attachWashMeta(cycleId, meta, notes, { force });
       } else if (stage === "DESINFECCAO") {
         const { notes, ...meta } = values;
-        await attachDisinfectionMeta(cycleId, meta, notes);
+        await attachDisinfectionMeta(cycleId, meta, notes, { force });
       } else if (stage === "ESTERILIZACAO") {
         const { notes, ...meta } = values;
-        await attachSterilizationMeta(cycleId, meta, notes);
+        await attachSterilizationMeta(cycleId, meta, notes, { force });
       } else if (stage === "ARMAZENAMENTO") {
         const { notes, expiresAtLocal, ...rest } = values;
         await attachStorageMeta(
           cycleId,
           { ...rest, expiresAt: toISO(expiresAtLocal) },
-          notes
+          notes,
+          { force }
         );
       } else {
         return;
@@ -176,6 +266,15 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
       form.reset({});
       onSaved?.();
     } catch (e: any) {
+      if (e?.response?.status === 409) {
+        setLocked(true);
+        setHasExisting(true);
+        toast({
+          title: "Já preenchido",
+          description: "Esta etapa já possui metadados. Clique em Editar para alterar.",
+        });
+        return;
+      }
       toast({
         title: "Falha ao anexar metadados",
         description: e?.response?.data?.message || e?.message || "Erro",
@@ -311,6 +410,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     type="time"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
                 <FormMessage />
@@ -328,6 +428,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   >
                     <option value="">—</option>
                     <option value="PERACETICO">Peracético</option>
@@ -354,6 +455,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     placeholder="Ex.: 0,2% / 2000 ppm"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
                 <FormMessage />
@@ -373,6 +475,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     inputMode="numeric"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
                 <FormMessage />
@@ -391,6 +494,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     placeholder="Opcional"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -408,6 +512,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     placeholder="Opcional"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -425,6 +530,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     type="date"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -442,6 +548,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   >
                     <option value="">—</option>
                     <option value="PASS">Aprovado</option>
@@ -463,6 +570,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   >
                     <option value="">—</option>
                     <option value="ATIVO_2">ATIVO a 2% — Desinf. alto nível</option>
@@ -488,6 +596,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     inputMode="numeric"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -506,6 +615,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     inputMode="numeric"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -546,6 +656,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   >
                     <option value="">—</option>
                     <option value="STEAM_134">Vapor 134°C</option>
@@ -571,6 +682,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     placeholder="Identificação do equipamento"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -588,6 +700,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     placeholder="Ex.: Prg Rápido"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -606,6 +719,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     inputMode="numeric"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -624,6 +738,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     inputMode="numeric"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -641,6 +756,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   >
                     <option value="">—</option>
                     <option value="PASS">PASS</option>
@@ -663,6 +779,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   >
                     <option value="">—</option>
                     <option value="PASS">PASS</option>
@@ -685,6 +802,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     placeholder="Identificador da carga"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -726,6 +844,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                   placeholder="Ex.: Sala 3 - Prateleira B"
                   value={field.value ?? ""}
                   onChange={(e) => field.onChange(e.target.value)}
+                  disabled={locked}
                 />
               </FormControl>
             </FormItem>
@@ -743,6 +862,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                   value={field.value ?? ""}
                   onChange={(e) => field.onChange(e.target.value)}
+                  disabled={locked}
                 >
                   <option value="">—</option>
                   <option value="TIME">Por tempo</option>
@@ -764,6 +884,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                   type="datetime-local"
                   value={field.value ?? ""}
                   onChange={(e) => field.onChange(e.target.value)}
+                  disabled={locked}
                 />
               </FormControl>
             </FormItem>
@@ -782,6 +903,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                   className="size-4"
                   checked={!!field.value}
                   onChange={(e) => field.onChange(e.target.checked)}
+                  disabled={locked}
                 />
                 <span className="text-sm text-muted-foreground">Sem violação / embalagem íntegra</span>
               </div>
@@ -820,9 +942,13 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
       }}
     >
       <DialogContent className="sm:max-w-[720px] max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Metadados — {stage}</DialogTitle>
-        </DialogHeader>
+        <DialogTitle>
+          Metadados — {stage}
+          {loadingPrefill && <span className="ml-2 text-xs text-muted-foreground">carregando…</span>}
+          {hasExisting && !loadingPrefill && (
+            <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs">já preenchido</span>
+          )}
+        </DialogTitle>
 
         <Form {...form}>
           <form className="space-y-4" onSubmit={form.handleSubmit(submit)}>
@@ -831,7 +957,11 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              {isMetaStage && <Button type="submit">Salvar metadados</Button>}
+             {isMetaStage && !loadingPrefill && (
+                locked
+                  ? <Button type="button" onClick={() => setLocked(false)}>Editar</Button>
+                  : <Button type="submit">Salvar metadados</Button>
+              )}
             </DialogFooter>
           </form>
         </Form>
