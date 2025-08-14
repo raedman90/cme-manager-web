@@ -9,6 +9,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   attachDisinfectionMeta,
   attachSterilizationMeta,
@@ -18,6 +19,7 @@ import {
   getStageEventMeta,
   type StageKind,
 } from "@/api/stageMeta";
+import { downloadCSV, toCSV } from "@/utils/csv";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -138,6 +140,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
   const [locked, setLocked] = React.useState(false);
   const [loadingPrefill, setLoadingPrefill] = React.useState(false);
   const [hasExisting, setHasExisting] = React.useState(false);
+  const [risk, setRisk] = React.useState<null | { level: "warning" | "danger"; msg: string }>(null);
 
   // escolhe schema conforme etapa
   const schema = React.useMemo(() => {
@@ -182,6 +185,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
           form.reset({});
           setLocked(false);
           setHasExisting(false);
+          setRisk(null);
           return;
         }
         // Normaliza por etapa
@@ -230,11 +234,24 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
         }
         setLocked(true);
         setHasExisting(true);
+        // Avaliar risco com base no dado carregado
+        if (stage === "DESINFECCAO") {
+          if (d.testStripResult === "FAIL") {
+            setRisk({ level: "danger", msg: "Fita teste REPROVADA. Realizar nova diluição antes de prosseguir." });
+          } else if (d.activationLevel === "INATIVO" || d.activationLevel === "NAO_REALIZADO") {
+            setRisk({ level: "warning", msg: "Classificação indica solução inativa ou teste não realizado." });
+          } else {
+            setRisk(null);
+          }
+        } else {
+          setRisk(null);
+        }
       } catch (err: any) {
         // 404 => sem StageEvent/meta para essa etapa
         form.reset({});
         setLocked(false);
         setHasExisting(false);
+        setRisk(null);
       } finally {
         setLoadingPrefill(false);
       }
@@ -296,6 +313,17 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
         variant: "destructive",
       });
     }
+  }
+  // Exportar CSV do registro atual (prefill ou form)
+  function handleExportCSV() {
+    const v = form.getValues() || {};
+    const now = new Date();
+    const filename = `meta_${stage.toLowerCase()}_${now.toISOString().slice(0,10)}.csv`;
+    const row = { stage, ...v };
+    // headers simples: chaves do objeto atual
+    const headers = Object.keys(row).map((k) => ({ key: k as keyof typeof row, label: k }));
+    const csv = toCSV([row] as any[], headers as any);
+    downloadCSV(filename, csv);
   }
 
   /* -------------------------- render dos campos -------------------------- */
@@ -413,6 +441,14 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
     if (stage === "DESINFECCAO") {
       return (
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+         {risk && (
+            <div className="sm:col-span-2 md:col-span-3">
+              <Alert variant={risk.level === "danger" ? "destructive" : "default"}>
+                <AlertTitle>{risk.level === "danger" ? "Atenção crítica" : "Atenção"}</AlertTitle>
+                <AlertDescription>{risk.msg}</AlertDescription>
+              </Alert>
+            </div>
+          )}
            {/* Horário do teste */}
           <FormField
             control={form.control}
@@ -952,6 +988,8 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
     <Dialog
       open={open}
       onOpenChange={(v) => {
+        // proteger contra perda de alterações
+        if (!v && form.formState.isDirty && !confirm("Descartar alterações não salvas?")) return;
         onOpenChange(v);
         if (!v) form.reset({});
       }}
@@ -992,14 +1030,19 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
               </Button>
              {isMetaStage && !loadingPrefill && (
                 locked ? (
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      if (confirm("Editar metadados desta etapa?")) setLocked(false);
-                    }}
-                  >
-                    Editar
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={handleExportCSV}>
+                      Exportar CSV
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (confirm("Editar metadados desta etapa?")) setLocked(false);
+                      }}
+                    >
+                      Editar
+                    </Button>
+                  </div>
                 ) : (
                   <Button type="submit" disabled={!form.formState.isDirty}>
                     Salvar metadados
