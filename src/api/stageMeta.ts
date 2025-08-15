@@ -11,6 +11,16 @@ export type Stage =
 
 export type StageKind = "wash" | "disinfection" | "sterilization" | "storage";
 
+/** Map Stage (UI) -> kind (rota) */
+export function stageToKind(stage: Stage | string): StageKind | null {
+  const s = String(stage || "").toUpperCase();
+  if (s === "LAVAGEM") return "wash";
+  if (s === "DESINFECCAO") return "disinfection";
+  if (s === "ESTERILIZACAO") return "sterilization";
+  if (s === "ARMAZENAMENTO") return "storage";
+  return null;
+}
+
 /* Payloads por etapa */
 export type WashMeta = {
   method: "MANUAL" | "ULTRASSONICA" | "TERMO_DESINFECCAO";
@@ -136,7 +146,7 @@ export async function attachStorageMeta(cycleId: string, meta: StorageMeta, note
 
 /* ------------------------ GET p/ prefill por CICLO ------------------------ */
 export async function getStageEventMeta(stageEventId: string, kind: StageKind) {
-  const { data } = await api.get(`/stage-events/${stageEventId}/stage-meta/${kind}`);
+  const { data } = await api.get(`/cycles/${stageEventId}/stage-meta/${kind}`);
   return data as {
     ok: boolean;
     cycleId: string;
@@ -145,4 +155,23 @@ export async function getStageEventMeta(stageEventId: string, kind: StageKind) {
     detail?: any; // registro específico da etapa (ex.: DisinfectionEvent)
     meta?: any;   // StageEvent.meta (se o back devolver)
   };
+}
+/** Verifica se EXISTE metadado para a etapa de um ciclo (pelo endpoint /cycles/...). */
+export async function checkStageMeta(cycleId: string, stage: Stage) {
+  const kind = stageToKind(stage);
+  if (!kind) return { exists: false as const };
+  try {
+    const { data } = await api.get(`/cycles/${cycleId}/stage-meta/${kind}`);
+    return {
+      exists: !!data?.detail,
+      stageEventId: data?.stageEventId as string | undefined,
+    };
+  } catch (e: any) {
+    if (e?.response?.status === 404) {
+      // Sem StageEvent ou sem metadado para essa etapa do ciclo
+      return { exists: false as const };
+    }
+    // Propaga outros erros (401/500 etc.) para o caller decidir
+    throw e;
+  }
 }

@@ -113,7 +113,18 @@ export default function Cycles() {
 
   // seleção (mantemos para futuras ações em massa; sem trocar etapa aqui)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const items = data?.data ?? [];
+  // Itens vindos do servidor
+  const serverItems = data?.data ?? [];
+  const serverTotal = data?.total ?? serverItems.length;
+
+  // Detecta "sem paginação no servidor" (API devolveu tudo)
+  const serverNotPaginated =
+    serverItems.length > (perPage || 0) && (data?.total == null || data?.total === serverItems.length);
+
+  // Fallback de paginação no client
+  const start = (page - 1) * perPage;
+  const end = start + perPage;
+  const items = serverNotPaginated ? serverItems.slice(start, end) : serverItems;
 
   function openCreate() { setEditing(null); setOpen(true); }
   function openEdit(row: Cycle) { setEditing(row); setOpen(true); }
@@ -243,7 +254,7 @@ export default function Cycles() {
     [deleteMut]
   );
 
-  const total = data?.total ?? (data?.data?.length ?? 0);
+  const total = serverNotPaginated ? serverItems.length : serverTotal;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
@@ -255,7 +266,8 @@ export default function Cycles() {
   };
 
   // métricas simples
-  const totalToday = items.filter((c: any) => {
+  // total de hoje deve olhar o conjunto completo (não só a página atual)
+  const totalToday = serverItems.filter((c: any) => {
     if (!c.timestamp) return false;
     const d = new Date(c.timestamp);
     const now = new Date();
