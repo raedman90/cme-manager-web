@@ -9,11 +9,14 @@ export function useAlertsSSE(enabled = true) {
     const onMsg = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);
-        // Estratégia simples: invalida caches relevantes
-        qc.invalidateQueries({ queryKey: ["alerts-counts"] });
-        qc.invalidateQueries({ queryKey: ["alerts", "open-map"] });
-        // se a lista de alertas estiver aberta
-        qc.invalidateQueries({ queryKey: ["alerts"] });
+        if (data?.type === "comment" && data?.comment?.alertId) {
+          qc.invalidateQueries({ queryKey: ["alert-comments", data.comment.alertId] });
+        } else {
+          // eventos de open/ack/resolve/counts
+          qc.invalidateQueries({ queryKey: ["alerts-counts"] });
+          qc.invalidateQueries({ queryKey: ["alerts", "open-map"] });
+          qc.invalidateQueries({ queryKey: ["alerts"] });
+        }
       } catch {}
     };
     es.addEventListener("alert", onMsg as any);

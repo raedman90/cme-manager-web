@@ -95,8 +95,18 @@ export default function Cycles() {
       qc.invalidateQueries({ queryKey: ["cycles"] });
       setOpen(false);
     },
-    onError: (e: any) =>
-      toast({ title: "Erro ao criar", description: e?.response?.data?.message || "—", variant: "destructive" }),
+    onError: async (e: any) => {
+      const msg = e?.response?.data?.message || e?.message || "";
+      // Bloqueio por alerta crítico
+      if (e?.response?.status === 412 || /alerta.*crític/i.test(msg)) {
+        const ok = confirm("Há alertas críticos abertos para este ciclo. Deseja forçar a mudança de etapa?");
+        if (ok && editing) {
+          await updateStageMut.mutateAsync({ id: editing.id, dto: { ...(e?.config?.data ? JSON.parse(e.config.data) : {}), force: true } });
+          return;
+        }
+      }
+      toast({ title: "Erro ao atualizar 2", description: msg || "—", variant: "destructive" });
+    },
   });
 
   // editar = atualizar etapa/responsável/obs (se seu CycleForm enviar params, repasso também)

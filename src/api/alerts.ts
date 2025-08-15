@@ -32,3 +32,13 @@ export async function resolveAlert(id: string) {
   const { data } = await api.patch(`/alerts/${id}/resolve`);
   return data as Alert;
 }
+// -------- Comments --------
+export async function listAlertComments(alertId: string, params?: { page?: number; perPage?: number }) {
+  const { data } = await api.get(`/alerts/${alertId}/comments`, { params });
+  return data as { data: Array<{ id: string; author?: string | null; text: string; createdAt: string }>; total: number; page: number; perPage: number };
+}
+
+export async function createAlertComment(alertId: string, payload: { text: string; author?: string }) {
+  const { data } = await api.post(`/alerts/${alertId}/comments`, payload);
+  return data;
+}

@@ -7,11 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAlertsSSE } from "@/hooks/useAlertsSSE";
+import AlertDetailsDrawer from "@/components/alerts/AlertDetailsDrawer";
+import { useAuth } from "@/hooks/useAuth"; // se existir
 
 export default function AlertsBell() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [open, setOpen] = React.useState(false);
+  const [detailOpen, setDetailOpen] = React.useState(false);
+  const [selected, setSelected] = React.useState<any | null>(null);
   useAlertsSSE(true);
   const counts = useQuery({ queryKey: ["alerts-counts"], queryFn: getAlertCounts });
   const alerts = useQuery({
@@ -24,6 +28,8 @@ export default function AlertsBell() {
 
   const openCount = counts.data?.open ?? 0;
   const critical = counts.data?.critical ?? 0;
+
+  const { user } = useAuth(); // se existir
 
   return (
     <>
@@ -55,6 +61,13 @@ export default function AlertsBell() {
                   </div>
                 </div>
                 <div className="shrink-0 flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setSelected(a); setDetailOpen(true); }}
+                  >
+                    Detalhes
+                  </Button>
                     <Button
                         size="sm"
                         variant="outline"
@@ -78,6 +91,12 @@ export default function AlertsBell() {
             {(alerts.data?.data?.length ?? 0) === 0 && !alerts.isLoading && (
               <div className="p-4 text-sm text-muted-foreground">Sem alertas abertos.</div>
             )}
+            <AlertDetailsDrawer
+              open={detailOpen}
+              onOpenChange={setDetailOpen}
+              alert={selected}
+              currentUserName={user?.name} // se existir
+            />
           </div>
         </DialogContent>
       </Dialog>

@@ -4,6 +4,7 @@ import { listAlerts, ackAlert, resolveAlert } from "@/api/alerts";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import AlertDetailsDrawer from "@/components/alerts/AlertDetailsDrawer";
 
 export default function AlertsPage() {
   const qc = useQueryClient();
@@ -12,6 +13,8 @@ export default function AlertsPage() {
   const [q, setQ] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [perPage, setPerPage] = React.useState(10);
+  const [detailOpen, setDetailOpen] = React.useState(false);
+  const [selected, setSelected] = React.useState<any | null>(null);
 
   const query = useQuery({
     queryKey: ["alerts", { status, severity, q, page, perPage }],
@@ -89,6 +92,7 @@ export default function AlertsPage() {
                 </div>
               </div>
               <div className="shrink-0 flex gap-2">
+                 <Button size="sm" variant="outline" onClick={() => { setSelected(a); setDetailOpen(true); }}>Detalhes</Button>
                 {a.status === "OPEN" && <Button size="sm" variant="outline" onClick={() => ackMut.mutate(a.id)}>Acusar</Button>}
                 {a.status !== "RESOLVED" && <Button size="sm" variant="destructive" onClick={() => resMut.mutate(a.id)}>Resolver</Button>}
               </div>
@@ -105,6 +109,7 @@ export default function AlertsPage() {
           </div>
         </CardContent>
       </Card>
+      <AlertDetailsDrawer open={detailOpen} onOpenChange={setDetailOpen} alert={selected} />
     </section>
   );
 }
