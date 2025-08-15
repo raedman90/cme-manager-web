@@ -1,6 +1,8 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { listAlerts, ackAlert, resolveAlert } from "@/api/alerts";
+import { listAlerts, ackAlert, resolveAlert, getAlertStats } from "@/api/alerts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, CartesianGrid } from "recharts";
+import { saveAs } from "file-saver";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -49,8 +51,82 @@ export default function AlertsPage() {
   const total = query.data?.total ?? rows.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
+
+  // -------- KPIs --------
+  const [from, setFrom] = React.useState<string>(() => {
+    const d = new Date(); d.setDate(d.getDate() - 29);
+    return d.toISOString().slice(0,10);
+  });
+  const [to, setTo] = React.useState<string>(() => new Date().toISOString().slice(0,10));
+  const tz = "America/Fortaleza";
+  const stats = useQuery({
+    queryKey: ["alerts-stats", from, to, tz],
+    queryFn: () => getAlertStats({ from: new Date(from).toISOString(), to: new Date(to + "T23:59:59").toISOString(), tz }),
+  });
+
+  function exportCsv() {
+    const data = stats.data?.byDay ?? [];
+    const header = "day,total,CRITICAL,WARNING,INFO\n";
+    const body = data.map(r => `${r.day},${r.total},${r.CRITICAL},${r.WARNING},${r.INFO}`).join("\n");
+    const blob = new Blob([header + body], { type: "text/csv;charset=utf-8" });
+    saveAs(blob, `alerts_kpis_${from}_to_${to}.csv`);
+  }
+
   return (
     <section className="space-y-4">
+      {/* KPIs */}
+      <Card>
+        <CardHeader>
+          <CardTitle>KPIs de Alertas</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2 items-end">
+            <div>
+              <div className="text-sm font-medium">De</div>
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            </div>
+            <div>
+              <div className="text-sm font-medium">Até</div>
+              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            </div>
+            <Button variant="outline" onClick={exportCsv} disabled={!stats.data}>Exportar CSV</Button>
+            <div className="ml-auto text-sm">
+              <span className="mr-3">Total: <b>{stats.data?.totals.total ?? "…"}</b></span>
+              <span className="mr-3 text-red-600">Crítico: <b>{stats.data?.totals.CRITICAL ?? "…"}</b></span>
+              <span className="mr-3 text-yellow-700">Aviso: <b>{stats.data?.totals.WARNING ?? "…"}</b></span>
+              <span className="text-slate-600">Info: <b>{stats.data?.totals.INFO ?? "…"}</b></span>
+            </div>
+          </div>
+
+          <div className="h-56 w-full">
+            <ResponsiveContainer>
+              <LineChart data={(stats.data?.byDay ?? []).map(d => ({ ...d, dayLabel: d.day.slice(5) }))}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="dayLabel" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="total" name="Total/dia" dot={false} />
+                <Line type="monotone" dataKey="CRITICAL" name="Crítico" dot={false} />
+                <Line type="monotone" dataKey="WARNING" name="Aviso" dot={false} />
+                <Line type="monotone" dataKey="INFO" name="Info" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="h-56 w-full">
+            <ResponsiveContainer>
+              <BarChart data={stats.data?.byKind ?? []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="kind" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="count" name="Alertas por tipo" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold">Alertas</h2>

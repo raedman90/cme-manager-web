@@ -42,3 +42,13 @@ export async function createAlertComment(alertId: string, payload: { text: strin
   const { data } = await api.post(`/alerts/${alertId}/comments`, payload);
   return data;
 }
+
+export async function getAlertStats(params?: { from?: string; to?: string; tz?: string }) {
+  const { data } = await api.get("/alerts/stats", { params });
+  return data as {
+    tz: string; from: string; to: string;
+    byDay: Array<{ day: string; total: number; CRITICAL: number; WARNING: number; INFO: number }>;
+    byKind: Array<{ kind: string; count: number }>;
+    totals: { total: number; CRITICAL: number; WARNING: number; INFO: number };
+  };
+}
