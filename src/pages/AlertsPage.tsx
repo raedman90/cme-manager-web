@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import AlertDetailsDrawer from "@/components/alerts/AlertDetailsDrawer";
+import { jsPDF } from "jspdf";
+import { svgToPngDataUrl } from "@/utils/csv";
 
 export default function AlertsPage() {
   const qc = useQueryClient();
@@ -72,6 +74,93 @@ export default function AlertsPage() {
     saveAs(blob, `alerts_kpis_${from}_to_${to}.csv`);
   }
 
+  // --- refs para exportar os gráficos como imagens ---
+  const lineRef = React.useRef<HTMLDivElement | null>(null);
+  const barRef = React.useRef<HTMLDivElement | null>(null);
+
+  async function exportPdf() {
+    // 1) aumentar temporariamente a altura dos gráficos para render HD
+    const originalLineH = lineRef.current?.style.height || "";
+    const originalBarH = barRef.current?.style.height || "";
+    if (lineRef.current) lineRef.current.style.height = "420px";
+    if (barRef.current) barRef.current.style.height = "420px";
+    // aguarda Recharts re-render
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50)));
+
+    // 2) captura
+    const lineSvg = lineRef.current?.querySelector("svg") as SVGSVGElement | null;
+    const barSvg = barRef.current?.querySelector("svg") as SVGSVGElement | null;
+
+    // 3) restaura a altura original
+    if (lineRef.current) lineRef.current.style.height = originalLineH;
+    if (barRef.current) barRef.current.style.height = originalBarH;
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" }); // 842 x 595
+    const margin = 40;
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const contentW = pageW - margin * 2;
+    const header = () => {
+      let y = margin;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("Relatório de Alertas — KPIs", margin, y);
+      y += 20;
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Período: ${from} a ${to}  ·  TZ: ${stats.data?.tz || "America/Fortaleza"}`, margin, y);
+      y += 16;
+      const totals = stats.data?.totals;
+      if (totals) {
+        doc.text(
+          `Totais — Geral: ${totals.total} | Crítico: ${totals.CRITICAL} | Aviso: ${totals.WARNING} | Info: ${totals.INFO}`,
+          margin, y
+        );
+        y += 10;
+      }
+      return y + 10;
+    };
+
+    // Página 1: linhas (byDay)
+    let y = header();
+    if (lineSvg) {
+      try {
+        const png = await svgToPngDataUrl(lineSvg, 4);
+        // usa ~60% da altura da página para o gráfico
+        const imgW = contentW;
+        const imgH = Math.round((pageH - y - margin) * 0.80);
+        doc.addImage(png, "PNG", margin, y, imgW, imgH);
+      } catch {/* ignora */}
+    }
+
+    // Página 2: barras (byKind) + lista resumida
+    doc.addPage();
+    y = header();
+    if (barSvg) {
+      try {
+        const png = await svgToPngDataUrl(barSvg, 4);
+        const imgW = contentW;
+        const imgH = Math.round((pageH - y - margin) * 0.70);
+        doc.addImage(png, "PNG", margin, y, imgW, imgH);
+        y += imgH + 16;
+      } catch {/* ignora */}
+    }
+    const kinds = stats.data?.byKind ?? [];
+    if (kinds.length) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Alertas por Tipo (resumo):", margin, y);
+      y += 14;
+      doc.setFont("helvetica", "normal");
+      const lineH = 14;
+      for (const k of kinds) {
+        if (y + lineH > pageH - margin) { doc.addPage(); y = header(); }
+        doc.text(`• ${k.kind}: ${k.count}`, margin, y);
+        y += lineH;
+      }
+    }
+
+    doc.save(`alerts_kpis_${from}_to_${to}.pdf`);
+  }
   return (
     <section className="space-y-4">
       {/* KPIs */}
@@ -90,6 +179,7 @@ export default function AlertsPage() {
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
             </div>
             <Button variant="outline" onClick={exportCsv} disabled={!stats.data}>Exportar CSV</Button>
+            <Button onClick={exportPdf} disabled={!stats.data}>Exportar PDF</Button>
             <div className="ml-auto text-sm">
               <span className="mr-3">Total: <b>{stats.data?.totals.total ?? "…"}</b></span>
               <span className="mr-3 text-red-600">Crítico: <b>{stats.data?.totals.CRITICAL ?? "…"}</b></span>
@@ -98,7 +188,7 @@ export default function AlertsPage() {
             </div>
           </div>
 
-          <div className="h-56 w-full">
+          <div className="h-56 w-full" ref={lineRef}>
             <ResponsiveContainer>
               <LineChart data={(stats.data?.byDay ?? []).map(d => ({ ...d, dayLabel: d.day.slice(5) }))}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -114,7 +204,7 @@ export default function AlertsPage() {
             </ResponsiveContainer>
           </div>
 
-          <div className="h-56 w-full">
+          <div className="h-56 w-full" ref={barRef}>
             <ResponsiveContainer>
               <BarChart data={stats.data?.byKind ?? []}>
                 <CartesianGrid strokeDasharray="3 3" />

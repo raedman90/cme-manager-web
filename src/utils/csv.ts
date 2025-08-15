@@ -24,3 +24,42 @@ export function downloadCSV(filename: string, csv: string, includeBOM = true) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+export async function svgToPngDataUrl(svgEl: SVGSVGElement, scale = 2): Promise<string> {
+  let width = 0, height = 0;
+  const bbox = (svgEl as any).getBBox?.();
+  if (bbox && bbox.width && bbox.height) {
+    width = bbox.width;
+    height = bbox.height;
+  } else {
+    const rect = svgEl.getBoundingClientRect();
+    width = rect.width || parseFloat(svgEl.getAttribute("width") || "0") || 600;
+    height = rect.height || parseFloat(svgEl.getAttribute("height") || "0") || 300;
+  }
+
+  const xml = new XMLSerializer().serializeToString(svgEl);
+  const svg64 = window.btoa(unescape(encodeURIComponent(xml)));
+  const imgSrc = `data:image/svg+xml;base64,${svg64}`;
+
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+
+  const canvas = document.createElement("canvas");
+  const dpr = (window.devicePixelRatio || 1);
+  const effScale = Math.max(scale, 2 * dpr); // eleva DPI em displays retina
+  canvas.width = Math.max(1, Math.floor(width * effScale));
+  canvas.height = Math.max(1, Math.floor(height * effScale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas não suportado");
+
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve();
+    };
+    img.onerror = (e) => reject(e);
+    img.src = imgSrc;
+  });
+
+  return canvas.toDataURL("image/png");
+}
