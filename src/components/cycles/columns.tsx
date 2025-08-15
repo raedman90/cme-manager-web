@@ -57,9 +57,32 @@ export type RowAction = {
   onDelete: (row: Cycle) => void;
   onOpenMeta: (row: Cycle) => void;      // << novo
 };
+// função opcional para informar a severidade do ciclo (mapa vindo do hook)
+type GetSevFn = (cycleId: string) => ("CRITICAL" | "WARNING" | "INFO" | undefined);
 
-export function getCycleColumns(actions: RowAction): ColumnDef<Cycle>[] {
+function SevDot({ sev }: { sev?: "CRITICAL" | "WARNING" | "INFO" }) {
+  if (!sev) return <span className="inline-block w-2.5 h-2.5 rounded-full bg-transparent" />;
+  const cls =
+    sev === "CRITICAL"
+      ? "bg-red-500"
+      : sev === "WARNING"
+      ? "bg-yellow-500"
+      : "bg-slate-400";
+  return <span title={sev} className={`inline-block w-2.5 h-2.5 rounded-full ${cls}`} />;
+}
+
+export function getCycleColumns(
+  actions: RowAction,
+  getSeverityForCycle?: GetSevFn
+): ColumnDef<Cycle>[] {
   return [
+    {
+      id: "alert",
+      header: "",
+      enableSorting: false,
+      size: 24,
+      cell: ({ row }) => <SevDot sev={getSeverityForCycle?.(row.original.id)} />,
+    },
     {
       accessorKey: "etapa",
       header: "Etapa",

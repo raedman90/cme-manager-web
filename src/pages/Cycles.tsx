@@ -19,6 +19,10 @@ import ImportCyclesCSVDialog from "@/components/cycles/ImportCyclesCSVDialog";
 import StageMetaDialog from "@/components/cycles/StageMetaDialog";
 import type { Stage } from "@/api/stageMeta";
 import type { CsvHeader } from "@/utils/csv";
+import { useAlertsMap } from "@/hooks/useAlertsMap";
+import AlertsBell from "@/components/alerts/AlertsBell";
+import TestAlertsPanel from "@/components/alerts/TestAlertsPanel";
+import { Dialog as UIDialog, DialogContent as UIDialogContent, DialogHeader as UIDialogHeader, DialogTitle as UIDialogTitle } from "@/components/ui/dialog";
 import { api } from "@/api/axios";
 
 /** Etapas (apenas p/ filtro/render) */
@@ -46,6 +50,8 @@ export default function Cycles() {
 
   // import dialog
   const [importOpen, setImportOpen] = useState(false);
+
+  const [testOpen, setTestOpen] = useState(false);
 
   // sorting seguro
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -76,6 +82,7 @@ export default function Cycles() {
   const [metaOpen, setMetaOpen] = useState(false);
   const [metaStage, setMetaStage] = useState<Stage>("RECEBIMENTO");
   const [metaCycleId, setMetaCycleId] = useState<string | null>(null);
+  const { map: alertsMap } = useAlertsMap(true);
 
   // criar
   const createMut = useMutation({
@@ -263,23 +270,26 @@ export default function Cycles() {
   // ⚠️ Removemos avanço de etapa na lista: ao tentar, só avisa para usar “Editar”
   const columns = useMemo(
     () =>
-      getCycleColumns({
-        onEdit: openEdit,
-        onDelete: (row) => { if (confirm("Cancelar este ciclo?")) deleteMut.mutate(row.id); },
-        onOpenMeta: (row) => {
-          if (row.etapa === "RECEBIMENTO") {
-            toast({
-              title: "Etapa sem metadados",
-              description: "A etapa RECEBIMENTO não possui metadados para anexar.",
-            });
-            return;
-          }
-          setMetaCycleId(row.id);
-          setMetaStage(row.etapa as Stage);
-          setMetaOpen(true);
+      getCycleColumns(
+        {
+          onEdit: openEdit,
+          onDelete: (row) => { if (confirm("Cancelar este ciclo?")) deleteMut.mutate(row.id); },
+          onOpenMeta: (row) => {
+            if (row.etapa === "RECEBIMENTO") {
+              toast({
+                title: "Etapa sem metadados",
+                description: "A etapa RECEBIMENTO não possui metadados para anexar.",
+              });
+              return;
+            }
+            setMetaCycleId(row.id);
+            setMetaStage(row.etapa as Stage);
+            setMetaOpen(true);
+          },
         },
-      }),
-    [deleteMut]
+        (cycleId) => alertsMap.get(cycleId)
+      ),
+    [deleteMut, alertsMap]
   );
 
   const total = serverNotPaginated ? serverItems.length : serverTotal;
@@ -326,8 +336,10 @@ export default function Cycles() {
             {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <div className="flex gap-2">
+            <AlertsBell />
             <Button variant="outline" onClick={handleExportCSV}>Exportar CSV</Button>
             <Button variant="outline" onClick={() => setImportOpen(true)}>Importar CSV</Button>
+            <Button variant="outline" onClick={() => setTestOpen(true)}>Gerar alerta (teste)</Button>
             <Button onClick={openCreate}>Novo ciclo</Button>
           </div>
         </div>
@@ -404,7 +416,11 @@ export default function Cycles() {
           onOpenChange={(v) => { setMetaOpen(v); if (!v) setMetaCycleId(null); }}
           cycleId={metaCycleId}
           stage={metaStage}
-          onSaved={() => qc.invalidateQueries({ queryKey: ["cycles"] })}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ["cycles"] });
+            qc.invalidateQueries({ queryKey: ["alerts-counts"] });
+            qc.invalidateQueries({ queryKey: ["alerts", "open-map"] });
+          }}
         />
       )}
 
@@ -414,6 +430,13 @@ export default function Cycles() {
         onOpenChange={setImportOpen}
         onImported={() => qc.invalidateQueries({ queryKey: ["cycles"] })}
       />
+      {/* Painel de testes de alerta */}
+      <UIDialog open={testOpen} onOpenChange={setTestOpen}>
+        <UIDialogContent className="sm:max-w-[720px]">
+          <UIDialogHeader><UIDialogTitle>Gerar alerta (teste)</UIDialogTitle></UIDialogHeader>
+          <TestAlertsPanel />
+        </UIDialogContent>
+      </UIDialog>
     </section>
   );
 }

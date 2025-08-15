@@ -18,6 +18,7 @@ import UsersNew from "@/pages/UsersNew";
 import UsersEdit from "@/pages/UsersEdit";
 import MaterialHistory from "@/pages/MaterialHistory";
 import MaterialsHistoryIndex from "@/pages/MaterialsHistoryIndex";
+import AlertsPage from "@/pages/AlertsPage";
 
 export const router = createBrowserRouter([
   {
@@ -40,6 +41,7 @@ export const router = createBrowserRouter([
               { path: "materials/:id/history", element: <MaterialHistory /> },
               { path: "batches", element: <Batches /> },
               { path: "cycles", element: <Cycles /> },
+              { path: "alerts", element: <AlertsPage /> },
               { path: "reports", element: <Reports /> },
               { path: "settings", element: <Settings /> },
               { path: "traceability", element: <TraceabilityPage /> },

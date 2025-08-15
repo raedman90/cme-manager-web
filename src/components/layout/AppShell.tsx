@@ -19,6 +19,7 @@ export default function App() {
     { to: "/materials/history", label: "Histórico" },
     { to: "/batches", label: "Lotes" },
     { to: "/cycles", label: "Ciclos" },
+    { to: "/alerts", label: "Alertas" },
     { to: "/reports", label: "Relatórios" },
     { to: "/traceability", label: "Rastreabilidade" },
     { to: "/settings", label: "Configurações" },

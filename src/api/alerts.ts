@@ -1,0 +1,34 @@
+import { api } from "@/api/axios";
+
+export type Alert = {
+  id: string;
+  key: string;
+  kind: "DISINFECTION_FAIL" | "STERILIZATION_FAIL" | "STORAGE_EXPIRES_SOON" | "STORAGE_EXPIRED" | "READINESS_BLOCK";
+  severity: "INFO" | "WARNING" | "CRITICAL";
+  status: "OPEN" | "ACKED" | "RESOLVED";
+  title: string;
+  message?: string;
+  cycleId?: string;
+  materialId?: string;
+  stageEventId?: string;
+  stage?: string;
+  dueAt?: string | null;
+  createdAt: string;
+};
+
+export async function listAlerts(params?: { status?: string; severity?: string; q?: string; page?: number; perPage?: number }) {
+  const { data } = await api.get("/alerts", { params });
+  return data as { data: Alert[]; total: number; page: number; perPage: number };
+}
+export async function getAlertCounts() {
+  const { data } = await api.get("/alerts/counts");
+  return data as { open: number; critical: number };
+}
+export async function ackAlert(id: string) {
+  const { data } = await api.patch(`/alerts/${id}/ack`);
+  return data as Alert;
+}
+export async function resolveAlert(id: string) {
+  const { data } = await api.patch(`/alerts/${id}/resolve`);
+  return data as Alert;
+}
