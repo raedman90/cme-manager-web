@@ -6,17 +6,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAlertsSSE } from "@/hooks/useAlertsSSE";
 
 export default function AlertsBell() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [open, setOpen] = React.useState(false);
-  const counts = useQuery({ queryKey: ["alerts-counts"], queryFn: getAlertCounts, refetchInterval: 30000 });
+  useAlertsSSE(true);
+  const counts = useQuery({ queryKey: ["alerts-counts"], queryFn: getAlertCounts });
   const alerts = useQuery({
     queryKey: ["alerts", open],
     queryFn: () => listAlerts({ status: "OPEN", perPage: 50 }),
-    enabled: open,
-    refetchInterval: open ? 15000 : undefined,
+    enabled: open
   });
   const ackMut = useMutation({ mutationFn: ackAlert, onSuccess: () => { qc.invalidateQueries({ queryKey: ["alerts", true] }); qc.invalidateQueries({ queryKey: ["alerts-counts"] }); } });
   const resMut = useMutation({ mutationFn: resolveAlert, onSuccess: () => { qc.invalidateQueries({ queryKey: ["alerts", true] }); qc.invalidateQueries({ queryKey: ["alerts-counts"] }); } });
