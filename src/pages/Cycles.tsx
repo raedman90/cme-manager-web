@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,7 @@ import AlertsBell from "@/components/alerts/AlertsBell";
 import TestAlertsPanel from "@/components/alerts/TestAlertsPanel";
 import { Dialog as UIDialog, DialogContent as UIDialogContent, DialogHeader as UIDialogHeader, DialogTitle as UIDialogTitle } from "@/components/ui/dialog";
 import { api } from "@/api/axios";
+import { useLocation, useNavigate } from "react-router-dom";
 
 /** Etapas (apenas p/ filtro/render) */
 const STAGES = ["RECEBIMENTO", "LAVAGEM", "DESINFECCAO", "ESTERILIZACAO", "ARMAZENAMENTO"] as const;
@@ -44,6 +45,8 @@ export default function Cycles() {
   const debouncedQ = useDebounce(q, 400);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // filtro de etapa
   const [stageFilter, setStageFilter] = useState<"all" | typeof STAGES[number]>("all");
@@ -311,6 +314,28 @@ export default function Cycles() {
     const now = new Date();
     return d.toDateString() === now.toDateString();
   }).length;
+
+  // Abrir StageMetaDialog via query params
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const focus = sp.get("focus");           // cycleId
+    const openStage = sp.get("openStage");   // "DESINFECCAO" | "ESTERILIZACAO" | "ARMAZENAMENTO"
+    if (focus && openStage) {
+      const stage = (["LAVAGEM","DESINFECCAO","ESTERILIZACAO","ARMAZENAMENTO"] as const)
+        .includes(openStage as any) ? (openStage as Stage) : undefined;
+      if (stage && stage !== "RECEBIMENTO") {
+        setMetaCycleId(focus);
+        setMetaStage(stage);
+        setMetaOpen(true);
+      }
+      // limpa os params para não reabrir ao navegar
+      const url = new URL(window.location.href);
+      url.searchParams.delete("focus");
+      url.searchParams.delete("openStage");
+      navigate(url.pathname + url.search, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]); // roda quando a URL muda
 
   return (
     <section className="space-y-4">

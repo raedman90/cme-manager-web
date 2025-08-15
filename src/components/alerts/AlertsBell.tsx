@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export default function AlertsBell() {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [open, setOpen] = React.useState(false);
   const counts = useQuery({ queryKey: ["alerts-counts"], queryFn: getAlertCounts, refetchInterval: 30000 });
@@ -52,6 +54,21 @@ export default function AlertsBell() {
                   </div>
                 </div>
                 <div className="shrink-0 flex gap-2">
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!a.cycleId}
+                        onClick={() => {
+                        if (!a.cycleId) return;
+                        const params = new URLSearchParams();
+                        params.set("focus", a.cycleId);
+                        if (a.stage && a.stage !== "RECEBIMENTO") params.set("openStage", a.stage);
+                        setOpen(false);
+                        navigate(`/cycles?${params.toString()}`);
+                        }}
+                    >
+                        Ver
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => ackMut.mutate(a.id)}>Acusar</Button>
                   <Button size="sm" variant="destructive" onClick={() => resMut.mutate(a.id)}>Resolver</Button>
                 </div>
