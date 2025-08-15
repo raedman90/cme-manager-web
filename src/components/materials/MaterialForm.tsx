@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/form";
 
 import MedicalNameCombobox from "@/components/materials/MedicalNameCombobox";
+import CategoryCombobox from "@/components/materials/CategoryCombobox";
 import ScanCodeDialog from "@/components/common/ScanCodeDialog";
 import { generateMaterialCode } from "@/utils/ids";
 
@@ -24,6 +25,27 @@ import { jsPDF } from "jspdf";
 /* -------------------------------- Schema -------------------------------- */
 // (compatível com zod antigo)
 const VALID_TYPES = ["crítico", "semicrítico", "não crítico"] as const;
+const CME_CATEGORIES = [
+  "Geral",
+  "Instrumental Cirúrgico",
+  "Caixas Cirúrgicas",
+  "Laparoscopia",
+  "Ortopedia/Trauma",
+  "Otorrino",
+  "Oftalmologia",
+  "Ginecologia/Obstetrícia",
+  "Urologia",
+  "Endoscopia",
+  "Anestesia",
+  "Clínica/Enfermagem",
+  "Curativos/Ataduras",
+  "Odontologia",
+  "Materiais Termossensíveis",
+  "Esterilização/Controle",
+  "Estocagem/Embalagem",
+  "Pronto Atendimento",
+  "Implantes/Consignado",
+] as const;
 
 const schema = z.object({
   name: z.string().min(2, "Informe o nome"),
@@ -32,11 +54,14 @@ const schema = z.object({
   active: z.boolean().default(true),
 
   // NOVOS CAMPOS OBRIGATÓRIOS
-  category: z.string().min(2, "Informe a categoria"),
+    category: z
+    .string()
+    .nonempty("Informe a categoria")
+    .refine((v) => (CME_CATEGORIES as readonly string[]).includes(v as any), { message: "Categoria inválida" }),
   type: z
     .string()
     .nonempty("Informe o tipo")
-    .refine((v) => (VALID_TYPES as readonly string[]).includes(v), { message: "Tipo inválido" }),
+    .refine((v) => (VALID_TYPES as readonly string[]).includes(v as any), { message: "Tipo inválido" }),
 
   // Validade obrigatória 'YYYY-MM-DD'
   expiry: z
@@ -105,8 +130,8 @@ export default function MaterialForm({
       description: defaultValues?.description ?? "",
       active: defaultValues?.active ?? true,
       // NOVOS
-      category: defaultValues?.category ?? "Geral",
-      type: defaultValues?.type ?? "não crítico",
+      category: (defaultValues?.category as any) ?? "Geral",
+      type: (defaultValues?.type as any) ?? "não crítico",
       expiry: toDateInput(defaultValues?.expiry) || "",
     },
   });
@@ -275,16 +300,20 @@ export default function MaterialForm({
           )}
         />
 
-        {/* Categoria */}
+        {/* Categoria (CME)*/}
         <FormField
           control={form.control}
           name="category"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Categoria</FormLabel>
-              <FormControl>
-                <Input placeholder="Ex.: Instrumental" {...field} />
-              </FormControl>
+              <CategoryCombobox
+                value={field.value || ""}
+                onChange={(v) => field.onChange(v)}
+                items={CME_CATEGORIES}
+                placeholder="Selecione ou busque…"
+                // allowCustom // (descomente para permitir categoria livre)
+              />
               <FormMessage />
             </FormItem>
           )}
