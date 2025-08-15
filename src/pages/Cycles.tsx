@@ -19,6 +19,7 @@ import ImportCyclesCSVDialog from "@/components/cycles/ImportCyclesCSVDialog";
 import StageMetaDialog from "@/components/cycles/StageMetaDialog";
 import type { Stage } from "@/api/stageMeta";
 import type { CsvHeader } from "@/utils/csv";
+import { api } from "@/api/axios";
 
 /** Etapas (apenas p/ filtro/render) */
 const STAGES = ["RECEBIMENTO", "LAVAGEM", "DESINFECCAO", "ESTERILIZACAO", "ARMAZENAMENTO"] as const;
@@ -98,7 +99,15 @@ export default function Cycles() {
       setEditing(null);
     },
     onError: (e: any) =>
-      toast({ title: "Erro ao atualizar 2", description: e?.response?.data?.message || "—", variant: "destructive" }),
+      toast({
+        title: "Erro ao atualizar",
+        description:
+          e?.response?.data?.reasons?.join(" • ") ||
+          e?.response?.data?.message ||
+          e?.message ||
+          "—",
+        variant: "destructive",
+      }),
   });
 
   const deleteMut = useMutation({
@@ -135,6 +144,25 @@ export default function Cycles() {
 
     // EDITAR
     if (editing) {
+      // Pré-cheque de prontidão para avançar etapa sensível
+      if (["ESTERILIZACAO", "ARMAZENAMENTO"].includes(String(values.etapa).toUpperCase())) {
+        try {
+          const { data: ready } = await api.get(`/cycles/${editing.id}/readiness`, {
+            params: { to: values.etapa },
+          });
+          if (!ready?.ok) {
+            throw new Error((ready?.reasons || []).join(" • ") || "Regras de progresso não atendidas.");
+          }
+        } catch (e: any) {
+          const msg =
+            e?.response?.data?.reasons?.join(" • ") ||
+            e?.response?.data?.message ||
+            e?.message ||
+            "Falha ao validar prontidão";
+          toast({ title: "Não é possível avançar", description: msg, variant: "destructive" });
+          return;
+        }
+      }
       const dto: any = {
         etapa: values.etapa,
         responsavel: values.responsavel,
