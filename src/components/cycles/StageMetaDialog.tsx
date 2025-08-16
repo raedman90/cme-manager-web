@@ -169,6 +169,8 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
 
   // ---------- DESINFECÇÃO: carregar lotes conforme o agente selecionado ----------
   const agentVal = useWatch({ control: form.control, name: "agent" });
+  const solutionLotIdVal = useWatch({ control: form.control, name: "solutionLotId" });
+  const stripLotIdVal = useWatch({ control: form.control, name: "testStripLot" });
   const solLots = useQuery({
     queryKey: ["solution-lots", agentVal, open],
     queryFn: () => listSolutionLots({ agent: agentVal, limit: 50 }),
@@ -187,6 +189,40 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
     form.setValue("testStripLot", "", { shouldDirty: true, shouldValidate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentVal]);
+
+  // Limpa lotes quando o agente muda (apenas na DESINFECCAO)
+  React.useEffect(() => {
+    if (!open || stage !== "DESINFECCAO") return;
+    form.setValue("solutionLotId", "", { shouldDirty: true, shouldValidate: false });
+    form.setValue("testStripLot", "", { shouldDirty: true, shouldValidate: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentVal]);
+
+  // Ao selecionar Lote da SOLUÇÃO → sugerir concentração (se vazia)
+  React.useEffect(() => {
+    if (!open || stage !== "DESINFECCAO") return;
+    if (!solutionLotIdVal) return;
+    const lot = (solLots.data?.data ?? []).find((l: SolutionLot) => l.id === solutionLotIdVal);
+    if (!lot?.concentrationLabel) return;
+    const curr = form.getValues().concentration;
+    if (!curr) {
+      form.setValue("concentration", lot.concentrationLabel, { shouldDirty: true, shouldValidate: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solutionLotIdVal, solLots.data, open, stage]);
+
+  // Ao selecionar Lote da FITA → sugerir validade (YYYY-MM-DD)
+  React.useEffect(() => {
+    if (!open || stage !== "DESINFECCAO") return;
+    if (!stripLotIdVal) return;
+    const lot = (stripLots.data?.data ?? []).find((l: TestStripLot) => l.id === stripLotIdVal);
+    if (!lot?.expiryAt) return;
+    const iso = new Date(lot.expiryAt);
+    if (!Number.isNaN(iso.getTime())) {
+      form.setValue("testStripExpiry", iso.toISOString().slice(0, 10), { shouldDirty: true, shouldValidate: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stripLotIdVal, stripLots.data, open, stage]);
 
   function warnExpiry(iso?: string) {
     if (!iso) return null;
@@ -223,6 +259,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
         }
         // Normaliza por etapa
         if (stage === "DESINFECCAO") {
+          const nowHM = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
           form.reset({
             agent: d.agent ?? "",
             concentration: d.concentration ?? "",
@@ -230,7 +267,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
             solutionLotId: d.solutionLotId ?? "",
             testStripLot: d.testStripLot ?? "",
             testStripResult: d.testStripResult ?? "",
-            activationTime: d.activationTime ?? "",
+            activationTime: d.activationTime ?? nowHM,
             activationLevel: d.activationLevel ?? "",
             testStripExpiry: d.testStripExpiry ? String(d.testStripExpiry).slice(0,10) : "",
             measuredTempC: d.measuredTempC ?? "",

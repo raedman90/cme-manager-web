@@ -25,6 +25,7 @@ import TestAlertsPanel from "@/components/alerts/TestAlertsPanel";
 import { Dialog as UIDialog, DialogContent as UIDialogContent, DialogHeader as UIDialogHeader, DialogTitle as UIDialogTitle } from "@/components/ui/dialog";
 import { api } from "@/api/axios";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useCycleEventsSSE } from "@/hooks/useCycleEventsSSE";
 
 /** Etapas (apenas p/ filtro/render) */
 const STAGES = ["RECEBIMENTO", "LAVAGEM", "DESINFECCAO", "ESTERILIZACAO", "ARMAZENAMENTO"] as const;
@@ -37,6 +38,7 @@ function toSortField(v: string | undefined): CycleSort | undefined {
 }
 
 export default function Cycles() {
+  useCycleEventsSSE(true);
   const { toast } = useToast();
   const qc = useQueryClient();
 
