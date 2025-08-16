@@ -1,69 +1,172 @@
-# React + TypeScript + Vite
+# CME Manager — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> Aplicação web (React + Vite + TypeScript) para operar materiais, ciclos, metadados de etapa e alertas em tempo real.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🧰 Stack
 
-## Expanding the ESLint configuration
+- **React** 18 + **TypeScript**
+- **Vite**
+- **@tanstack/react-query**
+- **Tailwind CSS** + **shadcn/ui**
+- **Axios** (instância em `src/api/axios.ts` com interceptors)
+- **SSE** via `EventSource` (hooks `useAlertsSSE` e `useCycleEventsSSE`)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+---
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## ⚙️ Variáveis de ambiente
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+Crie `./.env` na raiz do front:
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```ini
+VITE_API_BASE_URL=http://localhost:3333
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+> Use a mesma origem configurada no backend (`FRONT_ORIGIN`).
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+---
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 🚀 Scripts
+
+```bash
+# instalar deps
+npm i
+
+# rodar em desenvolvimento
+npm run dev
+
+# build de produção
+npm run build
+
+# preview do build
+npm run preview
 ```
+
+---
+
+## 🔐 Autenticação
+
+- O `AuthProvider` guarda `access_token` (e opcionalmente `refresh_token`) em `localStorage`.
+- A instância `axios` (em `src/api/axios.ts`) injeta `Authorization: Bearer <token>` em cada request.
+- Em **401**, tenta `POST /auth/refresh` com `{ refreshToken }`. Se falhar, dispara `auth:logout` e limpa sessão.
+
+---
+
+## 🔴 SSE (tempo real)
+
+- **Alertas:** hook `useAlertsSSE()` conecta em:
+  ```
+  GET /alerts/stream?token=<access_token>
+  ```
+  e invalida caches (`alerts`, `alerts-counts`, etc.) quando chegam eventos.
+
+- **Ciclos:** hook `useCycleEventsSSE()` conecta em:
+  ```
+  GET /events/cycles?token=<access_token>
+  ```
+  e invalida a query de `["cycles"]` quando chegam eventos `cycle:update`.
+
+Ambos usam o `accessToken` do `AuthContext` (ou `localStorage`) e **reconectam** se o token mudar.
+
+---
+
+## 🧩 Componentes relevantes
+
+- **AlertsBell**: ícone no topo com contadores (chama `GET /alerts/counts`) e abre a página de alertas.
+- **StageMetaDialog**: formulário de metadados por etapa (`LAVAGEM`, `DESINFECCAO`, `ESTERILIZACAO`, `ARMAZENAMENTO`) com:
+  - Prefill via `GET /stage-events/:cycleId/stage-meta/:kind`
+  - Bloqueio se já houver meta (com botão **Editar** que destrava)
+  - Suporte a `?force=1` no POST para sobrescrever
+  - Carregamento de **lotes de solução** e **fita‑teste** conforme `agent` (via `/lots/solutions` e `/lots/test-strips`)
+- **Cycles**: lista com filtros, ordenação segura e **paginação** (usa `{ data, total, page, perPage }` do backend).
+
+---
+
+## 🧪 Dicas de teste
+
+1. Faça login e verifique no DevTools que `localStorage.access_token` existe.
+2. Abra a página de **Ciclos** e o **AlertsBell** (colocado no Header).
+3. Em outro tab, gere um alerta (ex.: via POST no backend). O badge deve atualizar sozinho (SSE).
+4. Abra metadados de uma etapa:
+   - Se já preenchido, deve vir **prefill** + etiqueta “já preenchido” e botão **Editar**.
+   - Em Desinfecção, selecione `Agente` para carregar lotes e exibir validade/observações.
+5. Ajuste a **paginação** (5 / 10 / 20 / 50) e confira que o backend retorna paginado.
+
+---
+
+## 🧭 Padrões de API esperados pelo front
+
+- **Lista paginada:**
+  ```json
+  {
+    "data": [ ... ],
+    "total": 123,
+    "page": 1,
+    "perPage": 10
+  }
+  ```
+
+- **Readiness antes da etapa:**
+  ```http
+  GET /cycles/:id/readiness?to=DESINFECCAO
+  ```
+
+- **Stage meta (prefill):**
+  ```http
+  GET /stage-events/:cycleId/stage-meta/:kind  # kind ∈ wash|disinfection|sterilization|storage
+  ```
+
+- **Stage meta (salvar):**
+  ```http
+  POST /cycles/:cycleId/stage-meta/:kind[?force=1]
+  ```
+
+---
+
+## 🛠 Estrutura (sugestão)
+
+```
+src/
+  api/
+    axios.ts
+    cycles.ts
+    stageMeta.ts
+    alerts.ts
+    lots.ts
+  components/
+    cycles/
+      StageMetaDialog.tsx
+      CycleForm.tsx
+      columns.ts
+    alerts/
+      AlertsBell.tsx
+    materials/
+      MaterialForm.tsx
+      MedicalNameCombobox.tsx
+  hooks/
+    useAlertsSSE.ts
+    useCycleEventsSSE.ts
+  pages/
+    Cycles.tsx
+    Alerts.tsx
+  contexts/
+    AuthContext.tsx
+```
+
+---
+
+## 🐞 Troubleshooting
+
+- **SSE 401**: verifique se o hook está montando a URL com `?token=<access_token>`. O backend aceita token via query.
+- **Paginação não funciona**: assegure que o backend aplica `skip/take` e retorna `total`. O front calcula `totalPages = ceil(total / perPage)`.
+- **Zod enum** (mensagem `required_error` em versões antigas): use `.nonempty("mensagem")` ou envolva com `.refine(...)` conforme necessário.
+
+---
+
+## ✅ Boas práticas no front
+
+- Prefira **React Query** para cache/estado de dados remotos.
+- Centralize configurações de Axios em `src/api/axios.ts` e re‑use.
+- Evite “adivinhar” tokens dentro de hooks; use `AuthContext`.
+- Mantenha schemas Zod ao lado dos componentes de formulário para validações claras.
