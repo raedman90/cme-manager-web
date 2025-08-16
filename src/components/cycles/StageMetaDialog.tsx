@@ -1,7 +1,7 @@
 // src/components/cycles/StageMetaDialog.tsx
 import * as React from "react";
 import { z } from "zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,8 @@ import {
   type StageKind,
 } from "@/api/stageMeta";
 import { downloadCSV, toCSV } from "@/utils/csv";
+import { listSolutionLots, listTestStripLots, type SolutionLot, type TestStripLot } from "@/api/lots";
+import { useQuery } from "@tanstack/react-query";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -164,6 +166,37 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
     defaultValues: {},
     mode: "onSubmit",
   });
+
+  // ---------- DESINFECÇÃO: carregar lotes conforme o agente selecionado ----------
+  const agentVal = useWatch({ control: form.control, name: "agent" });
+  const solLots = useQuery({
+    queryKey: ["solution-lots", agentVal, open],
+    queryFn: () => listSolutionLots({ agent: agentVal, limit: 50 }),
+    enabled: open && stage === "DESINFECCAO" && !!agentVal,
+  });
+  const stripLots = useQuery({
+    queryKey: ["strip-lots", agentVal, open],
+    queryFn: () => listTestStripLots({ agent: agentVal, limit: 50 }),
+    enabled: open && stage === "DESINFECCAO" && !!agentVal,
+  });
+
+  // Limpa lotes quando o agente muda (apenas na DESINFECCAO)
+  React.useEffect(() => {
+    if (!open || stage !== "DESINFECCAO") return;
+    form.setValue("solutionLotId", "", { shouldDirty: true, shouldValidate: false });
+    form.setValue("testStripLot", "", { shouldDirty: true, shouldValidate: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentVal]);
+
+  function warnExpiry(iso?: string) {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    const days = Math.round((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    if (days < 0) return <span className="text-xs text-red-600">Vencido em {d.toLocaleDateString("pt-BR")}</span>;
+    if (days <= 7) return <span className="text-xs text-yellow-700">Vence em {d.toLocaleDateString("pt-BR")}</span>;
+    return <span className="text-xs text-muted-foreground">Val.: {d.toLocaleDateString("pt-BR")}</span>;
+  }
   // Map stage -> kind
   const kind = React.useMemo<StageKind | null>(() => {
     if (stage === "LAVAGEM") return "wash";
@@ -327,7 +360,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
   }
 
   /* -------------------------- render dos campos -------------------------- */
-  const RenderFields = React.useCallback(() => {
+  const RenderFields = () => {
     if (!isMetaStage) {
       return (
         <div className="py-6">
@@ -352,7 +385,8 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
-                  >
+                    disabled={locked}
+                   >
                     <option value="">—</option>
                     <option value="MANUAL">Manual</option>
                     <option value="ULTRASSONICA">Ultrassônica</option>
@@ -363,7 +397,6 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
               </FormItem>
             )}
           />
-
           <FormField
             control={form.control}
             name="detergent"
@@ -375,6 +408,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     placeholder="Opcional"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked} 
                   />
                 </FormControl>
               </FormItem>
@@ -393,6 +427,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     inputMode="numeric"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
                 <FormMessage />
@@ -412,6 +447,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     inputMode="numeric"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -429,6 +465,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     placeholder="Opcional"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value)}
+                    disabled={locked}
                   />
                 </FormControl>
               </FormItem>
@@ -533,7 +570,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
               </FormItem>
             )}
           />
-
+          {/* Lote da solução (agora na DESINFECCAO) */}
           <FormField
             control={form.control}
             name="solutionLotId"
@@ -541,17 +578,38 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
               <FormItem>
                 <FormLabel>Lote da solução</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="Opcional"
+                  <select
+                    key={`solution-${agentVal || "none"}`}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    {...field}
                     value={field.value ?? ""}
-                    onChange={(e) => field.onChange(e.target.value)}
-                    disabled={locked}
-                  />
+                    disabled={locked || !agentVal || solLots.isLoading}
+                  >
+                    <option value="">—</option>
+                    {(solLots.data?.data ?? []).map((l: SolutionLot) => (
+                      <option key={l.id} value={l.id}>
+                        {l.lotNumber}{l.brand ? ` · ${l.brand}` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </FormControl>
+                {!!field.value && (
+                  <div className="mt-1 text-xs">
+                    {warnExpiry((solLots.data?.data ?? []).find(l => l.id === field.value)?.expiryAt)}{" "}
+                    <span className="text-muted-foreground">
+                      {(solLots.data?.data ?? []).find(l => l.id === field.value)?.concentrationLabel || ""}
+                    </span>
+                  </div>
+                )}
+                {!solLots.isLoading && (solLots.data?.data?.length ?? 0) === 0 && agentVal && (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Nenhum lote ativo para {agentVal}. Cadastre em “Insumos”.
+                  </div>
+                )}
               </FormItem>
             )}
           />
-
+          {/* Lote fita teste */}
           <FormField
             control={form.control}
             name="testStripLot"
@@ -559,13 +617,27 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
               <FormItem>
                 <FormLabel>Lote fita teste</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="Opcional"
+                  <select
+                    key={`strip-${agentVal || "none"}`}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    {...field}
                     value={field.value ?? ""}
-                    onChange={(e) => field.onChange(e.target.value)}
-                    disabled={locked}
-                  />
+                    disabled={locked || !agentVal || stripLots.isLoading}
+                  >
+                    <option value="">—</option>
+                    {(stripLots.data?.data ?? []).map((l: TestStripLot) => (
+                      <option key={l.id} value={l.id}>
+                        {l.lotNumber}{l.brand ? ` · ${l.brand}` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </FormControl>
+
+                {!!field.value && (
+                  <div className="mt-1">
+                    {warnExpiry((stripLots.data?.data ?? []).find(l => l.id === field.value)?.expiryAt)}
+                  </div>
+                )}
               </FormItem>
             )}
           />
@@ -604,6 +676,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
                     <option value="">—</option>
                     <option value="PASS">Aprovado</option>
                     <option value="FAIL">Reprovado</option>
+                    <option value="NA">N/A</option>
                   </select>
                 </FormControl>
               </FormItem>
@@ -982,7 +1055,7 @@ export default function StageMetaDialog({ open, onOpenChange, cycleId, stage, on
       );
     }
     return null;
-  }, [form.control, stage]);
+  };
 
   return (
     <Dialog

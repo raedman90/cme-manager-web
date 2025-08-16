@@ -19,6 +19,7 @@ import UsersEdit from "@/pages/UsersEdit";
 import MaterialHistory from "@/pages/MaterialHistory";
 import MaterialsHistoryIndex from "@/pages/MaterialsHistoryIndex";
 import AlertsPage from "@/pages/AlertsPage";
+import InsumosPage from "@/pages/InsumosPage";
 
 export const router = createBrowserRouter([
   {
@@ -35,6 +36,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Dashboard /> },
               { path: "materials", element: <Materials /> },
+              { path: "insumos", element: <InsumosPage /> },
               // 👇 NOVA rota do índice
               { path: "materials/history", element: <MaterialsHistoryIndex /> },
               // 👇 nova rota de histórico por material

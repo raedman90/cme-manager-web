@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Package, Boxes, RefreshCw, BarChart3, Settings, LogOut, Users as UsersIcon, Clock, AlertTriangle, LucideRotateCwSquare } from "lucide-react";
+import { Package, Boxes, RefreshCw, BarChart3, Settings, LogOut, Users as UsersIcon, Clock, AlertTriangle, LucideRotateCwSquare, LucideFolderInput } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/brand/logo-escudo.png";
@@ -11,6 +11,7 @@ export function Sidebar({ onSignOut }: { onSignOut?: () => void }) {
   const baseNav = [
     { to: "/", label: "Dashboard", icon: BarChart3 },
     { to: "/materials", label: "Materiais", icon: Package },
+    { to: "/insumos", label: "Insumos", icon: LucideFolderInput },
     { to: "/materials/history", label: "Histórico", icon: Clock },
     { to: "/batches", label: "Lotes", icon: Boxes },
     { to: "/cycles", label: "Ciclos", icon: RefreshCw },

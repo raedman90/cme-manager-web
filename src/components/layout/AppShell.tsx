@@ -16,6 +16,7 @@ export default function App() {
     // Funcionários entra aqui se ADMIN
     ...(user?.role === "ADMIN" ? [{ to: "/users", label: "Funcionários" }] : []),
     { to: "/materials", label: "Materiais" },
+    { to: "/insumos", label: "Insumos" },
     { to: "/materials/history", label: "Histórico" },
     { to: "/batches", label: "Lotes" },
     { to: "/cycles", label: "Ciclos" },
